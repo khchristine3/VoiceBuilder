@@ -1,0 +1,91 @@
+{
+  "id": "9e8bc406-04ad-4971-a73a-05df3c42bd95",
+  "createdAt": "2026-07-19T20:41:36.193Z",
+  "updatedAt": "2026-07-19T20:56:16.638Z",
+  "type": "apiRequest",
+  "function": {
+    "name": "api_request_tool",
+    "description": "Books a 30-minute demo meeting. Use this after the lead has agreed to a specific date and time. Requires the lead's full name, email address, and the meeting start time in ISO 8601 format."
+  },
+  "messages": [
+    {
+      "type": "request-start",
+      "blocking": false
+    }
+  ],
+  "orgId": "9756cb30-47e6-493d-b3bd-d235a525c86a",
+  "name": "bookMeeting",
+  "url": "https://api.cal.com/v2/bookings",
+  "method": "POST",
+  "headers": {
+    "type": "object",
+    "properties": {
+      "Content-Type": {
+        "type": "string",
+        "value": "application/json"
+      },
+      "Authorization": {
+        "type": "string",
+        "value": "Bearer REDACTED"
+      },
+      "cal-api-version": {
+        "type": "string",
+        "value": "2024-08-13"
+      }
+    }
+  },
+  "body": {
+    "type": "object",
+    "required": [
+      "start",
+      "attendee"
+    ],
+    "properties": {
+      "start": {
+        "description": "Meeting start time in ISO 8601 format with timezone offset, for example 2026-07-21T11:30:00.000+03:00",
+        "type": "string",
+        "default": ""
+      },
+      "attendee": {
+        "description": "The lead's contact details",
+        "type": "object",
+        "required": [
+          "name ",
+          "email",
+          "timeZone "
+        ],
+        "properties": {
+          "email": {
+            "description": "The lead's email address",
+            "type": "string",
+            "default": ""
+          },
+          "name ": {
+            "description": "The lead's full name",
+            "type": "string",
+            "default": ""
+          },
+          "timeZone ": {
+            "description": "The lead's timezone in IANA format, for example Asia/Jerusalem",
+            "type": "string",
+            "default": ""
+          }
+        },
+        "default": ""
+      }
+    }
+  },
+  "variableExtractionPlan": {
+    "schema": {
+      "type": "object",
+      "required": [],
+      "properties": {}
+    }
+  },
+  "parameters": [
+    {
+      "key": "eventTypeId",
+      "value": 6371838
+    }
+  ]
+}
