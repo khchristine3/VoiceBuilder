@@ -4,20 +4,17 @@ A running record of every meaningful decision in this project: what we chose, wh
 
 **Project in one sentence:** a web app where you chat with a "builder" AI that generates and edits a voice AI assistant in plain English; the generated assistant can then call a lead, qualify them, and book a meeting.
 
-_Last updated: 19 Jul 2026_
+_Last updated: 20 Jul 2026_
 
 ## Status
 
-**Proven end to end:** describe an agent → agent created via API → live conversation → tool call mid-call → real Cal.com booking → confirmation email. Every integration in the chain has been verified at least once.
+**Proven end to end:** describe an agent in plain English → builder generates a config via Gemini structured output → merged into the Vapi template → real assistant created via API. Separately proven: live conversation → tool call mid-call → real Cal.com booking → confirmation email. The two chains haven't been run back-to-back yet (the just-built assistant hasn't been test-called), but every link in both has been verified.
 
-**Working:** Vapi agent creation from code (201), Cal.com booking from code (201), Vapi → Cal.com booking during a live browser call, ~$9.93 Vapi free credits.
+**Working:** the builder endpoint (`/api/chat`) end to end, Vapi agent creation from code (201), the bookMeeting tool defined in code and provisioned idempotently, Cal.com booking from code (201), Vapi → Cal.com booking during a live browser call, ~$9.93 Vapi free credits.
 
-**Blocked (email sent to Alta):** Anthropic API credit and a Twilio phone number — both require personal ID verification, declined.
+**Resolved via pivot:** Anthropic API credit and a Twilio phone number were both blocked on ID verification; Alta's recruiter declined to provision either and asked for an alternative approach. Resolved by moving to Gemini (#26) and Vapi web calls (#27) rather than by Alta providing credentials.
 
-**Not yet built:** the builder itself (system prompt + structured output), conversation history, the UI, `/api/call`, the slots tool.
-
----
-
+**Not yet built:** conversation history / editing an existing assistant, the two-panel UI, `/api/call`, the slots tool.
 
 ---
 
@@ -57,6 +54,8 @@ Each entry has four parts:
 ---
 
 ## 3. Calendar / booking → **Cal.com** (fake confirmation as emergency fallback)
+
+**Correction (see #20):** the claim below that Vapi has a built-in Cal.com booking tool was wrong when written — Vapi has no native Cal.com integration. #20 has the actual mechanism (API Request tool, later a Custom Tool).
 
 **Why:** Free, open API, and both Vapi and Retell have a built-in Cal.com booking tool. A real meeting landing in a real calendar is a strong credibility moment in the video for ~30 min of setup.
 
@@ -152,6 +151,8 @@ Each entry has four parts:
 
 ## 11. Two separate model slots → **Sonnet to build, small fast model to talk**
 
+**Superseded by #26:** the builder brain moved from Claude Sonnet to Gemini 3 Flash Preview (Anthropic has no free tier, and buying credits required ID verification). The reasoning below — strong model to generate, fast model in-call — still holds; only which strong model changed.
+
 **Why:** These are different jobs with different constraints. The *builder brain* runs once per user request in my own code — quality matters, a two-second wait is invisible, so a strong model (Claude Sonnet) is right. The *in-call brain* runs inside Vapi on every turn of a live phone call — here latency *is* the product. Transcription, network, and voice generation already eat close to a second; a slow model pushes the silence past the point where a human thinks the line dropped. So: small, fast model in the call (`gpt-4o-mini`, chosen automatically by Vapi since its in-house model is plan-gated).
 
 **Alternatives weighed:**
@@ -192,6 +193,8 @@ Each entry has four parts:
 
 ## 14. Talking to Vapi → **raw `fetch`, not an SDK** (and the general rule)
 
+**Note:** the Anthropic SDK referenced below is no longer used — the project moved to Gemini (#26), which uses `@google/genai`. The underlying rule is unchanged: official SDK for first-party APIs, raw HTTP when the SDK is thin or absent. `@google/genai` is now the example that earns its place; Vapi and Cal.com's raw-fetch treatment is unaffected.
+
 **Why:** Vapi's REST API is simple — a POST with a JSON body. Raw fetch keeps one less dependency for something this thin. The general rule I'm applying: **official SDK for first-party APIs when it's well-maintained** (which is why the Anthropic SDK is in, for its types, retries, and error handling), **raw HTTP when the SDK is thin, lagging, or absent.**
 
 **Alternatives weighed:**
@@ -227,6 +230,8 @@ Each entry has four parts:
 
 ## 17. Telephony → **Twilio number required** (location-forced)
 
+**Superseded by #27:** no carrier ended up viable — every option required government ID. The comparison below (why Twilio over Plivo/Telnyx/Vonage) is preserved for the record, but the conclusion — that a paid Twilio number is the path forward — didn't hold. See the PSTN → web calls pivot.
+
 **Why:** This one wasn't a preference, it was geography. Vapi's free options are SIP (an internet address — cannot reach a real mobile at all) or free Vapi numbers, which are **US-national-use only**. I'm in Israel, so calling my own phone is an international call the free number can't place. A paid number that can dial internationally is the only path.
 
 **Alternatives weighed:**
@@ -241,6 +246,8 @@ Each entry has four parts:
 ---
 
 ## 18. Identity verification → **decline; ask Alta to provision the paid accounts**
+
+**Update:** Alta's recruiter declined to provision the accounts and said to find an alternative approach. That's the pivot point behind both the Anthropic → Gemini move (#26) and the PSTN → web calls move (#27).
 
 **Why:** Both Anthropic (to buy API credits) and Twilio (pay-as-you-go) require a government photo ID — Twilio also asks for tax information. These are company-funded accounts for a company assignment, and submitting personal identity documents for that isn't something I want to do. Vapi's free tier and Cal.com's free tier need nothing.
 
@@ -303,15 +310,104 @@ This is the concrete version of the earlier hallucination argument: the defense 
 
 ---
 
+## 23. Builder generation → create-only for now
+
+**Why:** Item 1 was to prove the full create path — structured output → merged template → `POST /assistant` → a real assistant — end to end. Every call to `/api/chat` currently creates a brand-new assistant; there's no conversation history yet, so there's nothing to target an edit against.
+
+**Alternatives weighed:**
+- **Build history + PATCH in the same pass** — bigger scope for one step, and an edit path is meaningless before create is proven to work reliably.
+
+**Next step:** conversation history (resend the full message array) plus a PATCH path that updates an existing assistant instead of creating a new one when there's prior context — CLAUDE.md item 2.
+
+**Say it like this:** "The builder creates real assistants end to end today. Editing an existing one — 'make her more casual' — is the next slice, and it needs conversation history to know what 'her' refers to."
+
+---
+
+## 24. bookMeeting tool → defined in code, provisioned idempotently
+
+**Why:** The tool existed only as a UUID hand-created in the Vapi dashboard, referenced as a magic string in the assistant template. The job post explicitly asks for "agent tools and functions in TypeScript... for task execution" — a hardcoded id doesn't demonstrate that. `lib/bookingTool.ts` now defines the full tool spec (function schema, Cal.com request shape, headers) in code, and `ensureBookingTool()` lists existing tools first, reusing a match by name instead of creating a new one every generation.
+
+**Fixed along the way:** the dashboard-built version had `"name "` and `"timeZone "` — trailing-space typos from hand-editing the dashboard's field editor — in its body schema. Cal.com's real field names are `name` and `timeZone` (confirmed in `app/api/cal-book-test/route.ts`). Rebuilding it in code fixed this rather than reproducing the bug.
+
+**Also found:** the captured reference file (`reference/vapi-tool-bookmeeting.json`) had the real, live Cal.com API key sitting in `headers.Authorization` in plaintext, pulled straight from the dashboard via the API. Redacted before committing — a good reminder that "read it back via the API" can round-trip secrets right along with the shape you wanted.
+
+**Alternatives weighed:**
+- **Leave the hardcoded id as-is** — simplest, but doesn't satisfy the "implement tools in code" ask and keeps the trailing-space bug.
+- **Always create a fresh tool on every generation** — simpler than list-then-create, but litters the Vapi dashboard with duplicates on every builder call.
+
+**Still hardcoded / not yet fixed:** the Cal.com API key is read from `CAL_API_KEY` but still lives directly in the tool's headers, and the tool still calls Cal.com straight from Vapi rather than through our own endpoint. CLAUDE.md item 6 replaces this with a Custom Tool once there's a public URL for Vapi to hit.
+
+**Say it like this:** "The booking tool used to be a UUID I clicked together by hand. It's defined in code now, provisioned once and reused, and fixing it in code caught a field-name typo the dashboard version had been silently carrying."
+
+---
+
+## 25. Voice IDs → verified against a live 400 response, not docs
+
+**Why:** Vapi's own voice-provider docs page (fetched directly) listed 13 voiceIds with "New" suffixes (e.g. "Clara New") and claimed "Rohan" didn't support `version: 2`. Neither held up. The first live `POST /assistant` call using the docs-sourced list came back with a 400 whose error message contained the *actual* valid list — 30 names, no "New" suffix, a dozen voices the docs never mentioned (Gustavo, Kylie, Lily, Hana, Neha, Cole, Harry, Paige, Spencer, Leah, Tara, Jess, Leo, Dan, Mia, Zac, Zoe). A follow-up test creating (then deleting) a throwaway assistant confirmed Rohan accepts `version: "2"` without complaint. `VOICE_IDS` in `lib/vapiTemplate.ts` now matches the API's own validation error, not the docs page.
+
+**Alternatives weighed:**
+- **Trust the docs page** — this is what happened first, and it broke the very first live test of the new endpoint.
+
+**Say it like this:** "The docs and the live API disagreed, so I trusted the API — same grounding principle as the agent's own system prompt, applied to how I built it. Now it's a standing rule in CLAUDE.md: confirm real API responses by calling them, don't rely on docs or memory."
+
+---
+
+## 26. Builder brain provider → **Gemini 3 Flash Preview** (moved off Anthropic)
+
+**Why:** Anthropic has no free API tier, and buying credits required government ID verification for a company-funded assignment account — declined, same constraint as #18.
+
+**Alternatives weighed:**
+- **Groq, OpenRouter, NVIDIA NIM, OpenAI** — none had a free tier that fit.
+- **Gemini** — the only top-tier model with a permanent free API tier, no card on file, and support for structured output (required by #2/#15). This is the pick.
+
+**Tradeoff noted:** free-tier Gemini prompts can be used by Google for training. Fine for a take-home demo with mock leads; production use with real client CRM data would need to move to a paid tier for data privacy.
+
+**Say it like this:** "Anthropic and OpenAI don't have a free tier, and Groq, OpenRouter, and NVIDIA NIM didn't fit either — Gemini was the only top-tier model with a genuinely free API tier and no card required, and it still supports structured output. The catch is free-tier traffic can be used for training, so production with real client data would need a paid tier."
+
+---
+
+## 27. Call transport → **Vapi web calls**, not PSTN
+
+**Why:** Every telephony carrier requires government photo ID to provision a number (see #17, superseded). Vapi's free numbers are US-national-use only, and the test phone is Israeli — neither path works without submitting identity documents. The demo instead uses Vapi web calls (the `@vapi-ai/web` SDK) embedded directly in the app.
+
+**`/api/call`** — the endpoint for a real PSTN call — is still written and shown on camera, just not executed live.
+
+**Why this still satisfies the brief:** describe → generate → call → qualify → book all still happen end to end; only the transport layer differs (WebRTC in-browser instead of the phone network). None of the five assignment beats are skipped.
+
+**Alternatives weighed:**
+- **Keep pursuing a paid number** — ruled out; no carrier proved viable without ID (#17).
+- **Fake the call** — rejected; a web call is a real, live voice connection, just not routed through a phone network, so nothing about the demo itself is simulated.
+
+**Say it like this:** "No carrier would issue a number without ID, so the demo runs over Vapi's web-call SDK instead of a phone line. It's still a real, live call — describe, generate, call, qualify, book all happen — the only thing that changes is WebRTC instead of PSTN. `/api/call` is written and shown, just not fired live."
+
+---
+
+## 28. Re-checking Retell after the platform pivot → still rejected, on time grounds
+
+**Why:** Retell was the original fallback platform (#1) if Vapi's setup proved too heavy. Once Alta's recruiter declined to provision the blocked accounts (see the update on #18) and forced the Gemini and web-call pivots, it was worth checking whether Retell would sidestep the same problem.
+
+**Confirmed:** Retell also requires identity verification for its paid features — same blocker, different vendor.
+
+**Rejected migrating anyway** — not because Retell was worse, but because switching this late would mean re-proving assistant creation, the booking tool, and the full booking chain from zero, with roughly a day left.
+
+**Alternatives weighed:**
+- **Migrate to Retell** — would mean redoing everything already proven and working, for no benefit, since the identity-verification blocker isn't platform-specific.
+- **Stay on Vapi** — chosen; already working, and the actual blockers (ID verification for phone/LLM credit) are unrelated to which voice platform is used.
+
+**Say it like this:** "When the recruiter declined to provision the blocked accounts, I checked whether my fallback platform, Retell, would help — it hit the same identity-verification wall. Migrating this late would've meant re-proving everything already working, for zero benefit, so I stayed on Vapi."
+
+---
+
 ## Open / to revisit
-- **Blocked:** Anthropic API credit and Twilio number, both pending Alta providing credentials. Email sent.
-- Write the builder system prompt with structured output — the heart of the project, and unblocked (costs nothing to draft).
-- Add conversation history so the "edit" flow works ("make her more casual"). Resending the full message array *is* the memory; at scale this needs trimming or summarizing.
-- Build the two-panel UI: chat left, generated config right.
+- **Resolved via pivot, not by Alta providing credentials:** Anthropic API credit and a Twilio number were both blocked on ID verification; the recruiter declined to provision either. Resolved by moving to Gemini (#26) and Vapi web calls (#27), not by the original ask.
+- **Untested:** call a builder-generated assistant end to end via Vapi's browser "Talk" button. The earlier successful call → tool call → Cal.com booking used the hand-built assistant and the dashboard-created tool, before either was replaced by the generated/code-provisioned versions — that chain hasn't been re-proven against the new pipeline yet.
+- Add conversation history so the "edit" flow works ("make her more casual"), plus a PATCH path in `/api/chat` for updating an existing assistant instead of always creating a new one.
+- Build the two-panel UI: chat left, generated config right — `/api/chat` already returns `{ reply, assistant, config }` to support it.
 - `/api/call` endpoint plus the demo trigger button.
-- Add `getAvailableSlots` as a second tool; inject current date into generated prompts.
-- Convert the booking tool from API Request to a Custom Tool pointing at my own endpoint.
-- Decide the exact qualifying questions (budget, decision-maker, timeline, team size).
+- Add `getAvailableSlots` as a second tool.
+- Convert the booking tool from API Request to a Custom Tool pointing at my own endpoint (`lib/bookingTool.ts` is API-Request-shaped today).
+- Decide the exact qualifying questions (budget, decision-maker, timeline, team size) — currently left to the model per description.
 - Whether to seed 2–3 mock leads vs a single "call my own number" demo for the video.
 - Retest latency on a real phone call; tune `waitSeconds` only if it's still slow there.
 - Call-log panel (needs ngrok + webhook handling) — first thing to cut if time runs short.
+- Rotate the Cal.com API key since it was briefly captured in plaintext in a reference file (never committed, but worth doing on general principle).
