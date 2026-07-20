@@ -1,4 +1,3 @@
-@AGENTS.md
 # Project brief
 
 ## What this is
@@ -30,11 +29,25 @@ Env vars in `.env.local` (gitignored, documented in `.env.example`): `GEMINI_API
 
 Every external integration has been verified at least once:
 
-- **Gemini round-trip** — `app/api/chat/route.ts`, browser → API route → model → reply on screen.
-- **Programmatic Vapi assistant creation** — `POST /assistant` returns 201 with an assistant `id`. This is the core mechanism of the assignment and it is proven.
+- **The builder, end to end** — `app/api/chat/route.ts`: plain English → Gemini structured output → merged into the Vapi template (`lib/vapiTemplate.ts`) → `POST /assistant` → a real assistant, with the bookMeeting tool provisioned in code (`lib/bookingTool.ts`) rather than a hardcoded id. This is the core mechanism of the assignment and it is proven.
 - **Cal.com booking from code** — fetch real availability, then book a slot. Returns 201, real booking, confirmation email.
-- **Full chain: Vapi agent → tool call mid-conversation → Cal.com booking.** Tested through Vapi's browser "Talk" button. An `apiRequest` tool named `bookMeeting` was built by hand in the Vapi dashboard to discover the config shape; the builder needs to generate that same JSON.
+- **Full chain: Vapi agent → tool call mid-conversation → Cal.com booking.** Tested through Vapi's browser "Talk" button, before the tool was moved into code. Not yet re-tested against a builder-generated assistant.
 
+## Working rules
+
+- Never describe the contents, history, or shape of a file or API
+  response you haven't actually read. If you're inferring, say so
+  explicitly and verify before writing code that depends on it.
+- Before writing code against an external API, confirm the real
+  response shape by calling it — don't rely on docs or memory.
+  Model IDs, field names, and response envelopes go stale.
+- When a claim in a commit message or comment asserts a fact
+  (what a file used to contain, what a provider supports), verify
+  it first.
+- No Conventional Commits prefixes. Plain descriptive messages.
+- After any real decision, log it in DECISIONS.md: what was chosen,
+  why, what was weighed against it.
+  
 ## Hard constraints
 
 - **No real phone number.** Every telephony carrier (Twilio, Telnyx, Plivo) requires government photo ID for verification. This was declined — these are accounts for a company assignment, not personal use. Alta's recruiter confirmed they can't provide credentials either. Vapi's free numbers are US-national-use only and the test phone is Israeli, so they can't help.
@@ -45,15 +58,16 @@ Every external integration has been verified at least once:
 
 ## Architectural decisions that must be preserved
 
-**Generate only the fields that should vary.** The builder generates exactly four things: `name`, `firstMessage`, the system prompt (`model.messages[0].content`), and `voice.voiceId`. Everything else — `model.provider`/`model.model`, the `transcriber` block, `startSpeakingPlan`/`stopSpeakingPlan`, and the tool definitions — is a hardcoded template the generated fields merge into. If the model is allowed to emit the whole config it will eventually hallucinate a provider name or malform the endpointing plan and Vapi will reject it. This removes an entire failure class rather than prompting around it.
+**Generate only the fields that should vary.** The builder generates exactly four things: `name`, `firstMessage`, the system prompt (`model.messages[0].content`), and `voice.voiceId`, via `responseSchema`-constrained output (see `RESPONSE_SCHEMA` in `app/api/chat/route.ts`; `voiceId` is a real enum pulled from Vapi's own validation error, not its docs). Everything else — `model.provider`/`model.model`, the `transcriber` block, `startSpeakingPlan`/`stopSpeakingPlan`, and the tool definitions — is a hardcoded template (`lib/vapiTemplate.ts`) the generated fields merge into. If the model is allowed to emit the whole config it will eventually hallucinate a provider name or malform the endpointing plan and Vapi will reject it. This removes an entire failure class rather than prompting around it.
 
 **Use structured output.** The builder is a single generation step: one input, one output, one model call. Gemini's `responseSchema` / JSON mode enforces the shape. Do **not** introduce LangChain or LlamaIndex — there is no multi-step chain and no retrieval corpus, and Vapi handles the runtime orchestration. (Worth being able to say when they *would* apply: multi-step reasoning, or retrieval over CRM data.)
 
 **Model tier matches task.** Strong model for generation (latency invisible), small fast model in-call (every extra 300ms is dead air on a phone call). Don't "upgrade" the in-call model.
 
-**Ground facts rather than trusting the model.** Two real bugs found in testing, both from the agent inferring instead of reading data:
-- It booked July 20 when asked for July 22 — the model has no idea what today is. **Fix: inject the current date and day-of-week into the generated system prompt.**
-- It struggled to find a slot because it can't see the calendar. **Fix: a second `getAvailableSlots` tool** so it offers real availability instead of guessing.
+**Ground facts rather than trusting the model.** Real bugs found in testing, all from inferring instead of reading data:
+- It booked July 20 when asked for July 22 — the model has no idea what today is. **Fixed:** the current date/day-of-week is injected into a hardcoded booking-mechanics footer appended to every generated system prompt (`bookingFooter()` in `lib/vapiTemplate.ts`), not left for the model to guess.
+- It struggled to find a slot because it can't see the calendar. **Not yet fixed:** needs a second `getAvailableSlots` tool so it offers real availability instead of guessing.
+- Vapi's voice-provider docs page listed the wrong voiceIds entirely (and a wrong claim about Rohan/version 2). A live 400 response from `POST /assistant` was the source of truth instead — see DECISIONS.md #25 and the **Working rules** above.
 
 **Official SDK for first-party APIs, raw `fetch` when the SDK is thin.** Gemini uses `@google/genai`; Vapi and Cal.com use raw `fetch` (small REST surfaces).
 
@@ -69,21 +83,23 @@ Every external integration has been verified at least once:
 
 ## Existing files
 
-- `app/api/chat/route.ts` — the builder endpoint (currently a plain echo of the model's reply; needs to become the real builder)
-- `app/page.tsx` — minimal chat UI
-- `app/api/vapi-test/route.ts`, `app/api/cal-test/route.ts`, `app/api/cal-book-test/route.ts`, `app/api/gemini-models/route.ts` — **manual probe routes, not automated tests.** Each is a GET hit in the browser to verify one integration. Keep them; they document what was verified.
-- `reference/` — a Vapi assistant config captured from the dashboard, used as the generation template
+- `app/api/chat/route.ts` — the builder endpoint: Gemini structured output → `lib/vapiTemplate.ts` merge → `lib/bookingTool.ts` for the tool id → `POST /assistant`. Create-only for now (see DECISIONS.md #23).
+- `lib/vapiTemplate.ts` — the hardcoded assistant template and `buildAssistantPayload()` merge function; also owns `VOICE_IDS`.
+- `lib/bookingTool.ts` — defines the bookMeeting tool and `ensureBookingTool()`, which reuses an existing tool by name instead of creating duplicates.
+- `app/page.tsx` — minimal chat UI (not yet the two-panel layout; the API already returns `{ reply, assistant, config }` to support it)
+- `app/api/vapi-test/route.ts`, `app/api/vapi-assistant/route.ts`, `app/api/cal-test/route.ts`, `app/api/cal-book-test/route.ts` — **manual probe routes, not automated tests.** Each is a GET hit in the browser to verify one integration. Keep them; they document what was verified.
+- `reference/` — a Vapi assistant config and the bookMeeting tool config, both captured from the dashboard via the API (not hand-typed), used to derive the templates above. The tool capture had a live Cal.com key redacted before committing.
 - `DECISIONS.md` — full decision log with alternatives weighed and interview soundbites. **Keep this updated as new decisions are made** — it's used for the video narration and interview prep.
 
 ## What's left to build
 
 In priority order:
 
-1. **The builder system prompt + structured output.** The heart of the project. Natural language in, a validated four-field config out, merged into the Vapi template and POSTed to create a real assistant.
-2. **Conversation history.** Required for the "edits" half of the brief — "make her more casual, add a budget question" only works if the model can see what it built. Resending the full `messages` array *is* the memory. (At scale this needs trimming/summarizing — worth mentioning, not building.)
-3. **Two-panel UI** — chat left, generated config right, so the reviewer watches natural language become a structured callable agent. This is the moment that sells the demo.
-4. **`/api/call`** plus the web-call trigger button, using `@vapi-ai/web`.
-5. **`getAvailableSlots` tool** and current-date injection (fixes the two known bugs).
+1. **Test a builder-generated assistant end to end via Vapi's browser "Talk" button.** Not yet done — the earlier successful booking (call → tool call → Cal.com confirmation) used the hand-built assistant and the dashboard-created tool, before either was replaced by generated/code-provisioned versions. Confirms the new builder output actually works as a live agent, not just that `POST /assistant` returns 201.
+2. **Conversation history + edit path.** Required for the "edits" half of the brief — "make her more casual, add a budget question" only works if the model can see what it built, and `/api/chat` needs a PATCH-style path for updating an existing assistant instead of always creating a new one. (At scale, history needs trimming/summarizing — worth mentioning, not building.)
+3. **`getAvailableSlots` tool**, alongside the existing `bookMeeting` tool in `lib/bookingTool.ts`. Ahead of the UI: a booking that fails on camera is worse than a plainer interface, and this is the shorter task.
+4. **Two-panel UI** — chat left, generated config right, so the reviewer watches natural language become a structured callable agent. This is the moment that sells the demo.
+5. **`/api/call`** plus the web-call trigger button, using `@vapi-ai/web`.
 6. **Convert the booking tool from `apiRequest` to a custom tool** pointing at an owned endpoint, so the app performs the booking and can log the outcome. Needs ngrok or a deploy. Better story — the job post explicitly asks for "agent tools and functions in TypeScript."
 7. **Call-log panel** — who was called, did they qualify, was a meeting booked. First thing to cut if time runs short. (Gestures at where Datadog/Mixpanel would sit in production.)
 8. **README** — write last, describing what actually shipped. Include a limitations section (web calls not PSTN, mocked leads).
