@@ -144,7 +144,7 @@ export default function Home() {
 
   return (
     <main className="max-w-6xl mx-auto p-8">
-      <h1 className="text-2xl font-bold mb-6">Alta Voice Builder</h1>
+      <h1 className="text-2xl font-bold mb-6">Agent Voice Builder</h1>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="space-y-4 flex flex-col">
