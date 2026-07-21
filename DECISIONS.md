@@ -14,7 +14,7 @@ _Last updated: 21 Jul 2026_
 
 **Resolved via pivot:** Anthropic API credit and a Twilio phone number were both blocked on ID verification; Alta's recruiter declined to provision either and asked for an alternative approach. Resolved by moving to Gemini (#26) and Vapi web calls (#27) rather than by Alta providing credentials.
 
-**Not yet built:** the two-panel UI, `/api/call` plus the web-call trigger button.
+**Not yet built:** `/api/call` plus the web-call trigger button.
 
 ---
 
@@ -439,7 +439,6 @@ This is the concrete version of the earlier hallucination argument: the defense 
 ## Open / to revisit
 - **Resolved via pivot, not by Alta providing credentials:** Anthropic API credit and a Twilio number were both blocked on ID verification; the recruiter declined to provision either. Resolved by moving to Gemini (#26) and Vapi web calls (#27), not by the original ask.
 - **Confirmed:** a builder-generated assistant was tested end to end via Vapi's browser "Talk" button and booked a real meeting — the full chain (generate → call → qualify → book) is now proven against the code-generated/provisioned pipeline, not just the original hand-built one.
-- Build the two-panel UI: chat left, generated config right — `/api/chat` already returns `{ reply, assistant, config }` to support it.
 - `/api/call` endpoint plus the demo trigger button.
 - Convert the booking tool from API Request to a Custom Tool pointing at my own endpoint (`lib/calTools.ts` is API-Request-shaped today).
 - Decide the exact qualifying questions (budget, decision-maker, timeline, team size) — currently left to the model per description.
