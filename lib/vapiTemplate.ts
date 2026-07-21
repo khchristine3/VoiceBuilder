@@ -80,10 +80,16 @@ function bookingFooter(): string {
   return `## Scheduling context
 - Today is ${todayInBookingTimezone()}.
 
+## Checking availability
+- Before offering the lead any specific day or time, call getAvailableSlots (it takes no arguments). Never propose a time without checking here first.
+- Ask the lead's preferred day and rough time of day first (e.g. "does mid-morning or afternoon work better, and which day?"). Then, from the tool's results, read out 2-3 nearby matching options — never read out the full list of slots, it's overwhelming on a phone call.
+- If none of the 2-3 offered times work for the lead, offer 2-3 different ones from the results rather than listing everything at once.
+- Offer the lead a real slot returned by the tool, not a time you picked yourself.
+
 ## Demo booking
 - If qualified, collect: full name, work email, preferred day and time.
 - Meetings must be at least 3 hours from now. Do not offer sooner.
-- Once you have name, email, and a specific time, call the bookMeeting tool.
+- Once you have name, email, and a specific time, call the bookMeeting tool with a time returned by getAvailableSlots.
 - For the start parameter, use ISO 8601 format with the ${BOOKING_UTC_OFFSET} timezone offset.
 - For timeZone, use "${BOOKING_TIMEZONE}".
 - After the tool succeeds, confirm the booking out loud with the day and time.
@@ -93,7 +99,7 @@ function bookingFooter(): string {
 - Do not misrepresent yourself. Do not mention internal tools or systems.`;
 }
 
-export function buildAssistantPayload(fields: GeneratedFields, bookMeetingToolId: string) {
+export function buildAssistantPayload(fields: GeneratedFields, toolIds: string[]) {
   return {
     name: fields.name,
     firstMessage: fields.firstMessage,
@@ -106,7 +112,7 @@ export function buildAssistantPayload(fields: GeneratedFields, bookMeetingToolId
       provider: "openai",
       model: "gpt-4o-mini",
       maxTokens: 200,
-      toolIds: [bookMeetingToolId],
+      toolIds,
       messages: [
         {
           role: "system",
