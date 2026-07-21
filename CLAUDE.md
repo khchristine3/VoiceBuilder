@@ -29,9 +29,9 @@ Env vars in `.env.local` (gitignored, documented in `.env.example`): `GEMINI_API
 
 Every external integration has been verified at least once:
 
-- **The builder, end to end** — `app/api/chat/route.ts`: plain English → Gemini structured output → merged into the Vapi template (`lib/vapiTemplate.ts`) → `POST /assistant` → a real assistant, with the bookMeeting tool provisioned in code (`lib/bookingTool.ts`) rather than a hardcoded id. This is the core mechanism of the assignment and it is proven.
-- **Cal.com booking from code** — fetch real availability, then book a slot. Returns 201, real booking, confirmation email.
-- **Full chain: Vapi agent → tool call mid-conversation → Cal.com booking.** Tested through Vapi's browser "Talk" button, before the tool was moved into code. Not yet re-tested against a builder-generated assistant.
+- **The builder, end to end, including edits** — `app/api/chat/route.ts`: plain English → Gemini structured output → merged into the Vapi template (`lib/vapiTemplate.ts`) → `POST`/`PATCH /assistant` → a real assistant, with the bookMeeting and getAvailableSlots tools provisioned in code (`lib/calTools.ts`) rather than hardcoded ids. Conversation history plus the assistant id are threaded through so a follow-up message edits the same assistant instead of creating a new one (see DECISIONS.md #29). This is the core mechanism of the assignment and it is proven.
+- **Cal.com booking and real-slot lookup from code** — both `bookMeeting` and `getAvailableSlots` verified working via a live call (DECISIONS.md #30 for the getAvailableSlots debugging story — Vapi's `apiRequest` tool has no GET query-parameter mechanism, only a body, which Cal.com ignores on GET; fixed by baking a server-computed query string into a static URL instead).
+- **Full chain, against a builder-generated assistant: describe → generate → call → qualify → book.** Called via Vapi's browser "Talk" button, tool call mid-conversation, real Cal.com booking confirmed.
 
 ## Working rules
 
@@ -66,8 +66,9 @@ Every external integration has been verified at least once:
 
 **Ground facts rather than trusting the model.** Real bugs found in testing, all from inferring instead of reading data:
 - It booked July 20 when asked for July 22 — the model has no idea what today is. **Fixed:** the current date/day-of-week is injected into a hardcoded booking-mechanics footer appended to every generated system prompt (`bookingFooter()` in `lib/vapiTemplate.ts`), not left for the model to guess.
-- It struggled to find a slot because it can't see the calendar. **Not yet fixed:** needs a second `getAvailableSlots` tool so it offers real availability instead of guessing.
+- It struggled to find a slot because it can't see the calendar. **Fixed:** a `getAvailableSlots` tool, but the fix ran one layer deeper than expected — see below.
 - Vapi's voice-provider docs page listed the wrong voiceIds entirely (and a wrong claim about Rohan/version 2). A live 400 response from `POST /assistant` was the source of truth instead — see DECISIONS.md #25 and the **Working rules** above.
+- `getAvailableSlots`'s query parameters (`eventTypeId`, `start`, `end`, `timeZone`) never reached Cal.com at all — Vapi's `apiRequest` tool has no query-parameter mechanism for GET requests, only a request body, which Cal.com ignores on GET (standard REST behavior). The model's tool-call arguments were correct; the request Vapi built from them wasn't. Fixed by computing the query string server-side and baking it into a static URL — same grounding principle, applied one layer lower than "what the model says," down to "what the tool-calling platform actually sends." See DECISIONS.md #30.
 
 **Official SDK for first-party APIs, raw `fetch` when the SDK is thin.** Gemini uses `@google/genai`; Vapi and Cal.com use raw `fetch` (small REST surfaces).
 
@@ -83,9 +84,9 @@ Every external integration has been verified at least once:
 
 ## Existing files
 
-- `app/api/chat/route.ts` — the builder endpoint: Gemini structured output → `lib/vapiTemplate.ts` merge → `lib/bookingTool.ts` for the tool id → `POST /assistant`. Create-only for now (see DECISIONS.md #23).
+- `app/api/chat/route.ts` — the builder endpoint: Gemini structured output → `lib/vapiTemplate.ts` merge → `lib/calTools.ts` for the tool ids → `POST` (create) or `PATCH` (edit) `/assistant`, chosen by whether the request carries an `assistantId` (see DECISIONS.md #29).
 - `lib/vapiTemplate.ts` — the hardcoded assistant template and `buildAssistantPayload()` merge function; also owns `VOICE_IDS`.
-- `lib/bookingTool.ts` — defines the bookMeeting tool and `ensureBookingTool()`, which reuses an existing tool by name instead of creating duplicates.
+- `lib/calTools.ts` — defines the bookMeeting and getAvailableSlots tools and `ensureBookingTool()`/`ensureSlotsTool()`, which reuse an existing tool by name instead of creating duplicates (renamed from `bookingTool.ts` once it grew a second tool).
 - `app/page.tsx` — minimal chat UI (not yet the two-panel layout; the API already returns `{ reply, assistant, config }` to support it)
 - `app/api/vapi-test/route.ts`, `app/api/vapi-assistant/route.ts`, `app/api/cal-test/route.ts`, `app/api/cal-book-test/route.ts` — **manual probe routes, not automated tests.** Each is a GET hit in the browser to verify one integration. Keep them; they document what was verified.
 - `reference/` — a Vapi assistant config and the bookMeeting tool config, both captured from the dashboard via the API (not hand-typed), used to derive the templates above. The tool capture had a live Cal.com key redacted before committing.
@@ -93,16 +94,13 @@ Every external integration has been verified at least once:
 
 ## What's left to build
 
-In priority order:
+**Alta is due end of day today.** Building the remaining must-haves in this order, cutting the rest — items 3 and 4 below become spoken-over sentences in the video, not built:
 
-1. **Test a builder-generated assistant end to end via Vapi's browser "Talk" button.** Not yet done — the earlier successful booking (call → tool call → Cal.com confirmation) used the hand-built assistant and the dashboard-created tool, before either was replaced by generated/code-provisioned versions. Confirms the new builder output actually works as a live agent, not just that `POST /assistant` returns 201.
-2. **Conversation history + edit path.** Required for the "edits" half of the brief — "make her more casual, add a budget question" only works if the model can see what it built, and `/api/chat` needs a PATCH-style path for updating an existing assistant instead of always creating a new one. (At scale, history needs trimming/summarizing — worth mentioning, not building.)
-3. **`getAvailableSlots` tool**, alongside the existing `bookMeeting` tool in `lib/bookingTool.ts`. Ahead of the UI: a booking that fails on camera is worse than a plainer interface, and this is the shorter task.
-4. **Two-panel UI** — chat left, generated config right, so the reviewer watches natural language become a structured callable agent. This is the moment that sells the demo.
-5. **`/api/call`** plus the web-call trigger button, using `@vapi-ai/web`.
-6. **Convert the booking tool from `apiRequest` to a custom tool** pointing at an owned endpoint, so the app performs the booking and can log the outcome. Needs ngrok or a deploy. Better story — the job post explicitly asks for "agent tools and functions in TypeScript."
-7. **Call-log panel** — who was called, did they qualify, was a meeting booked. First thing to cut if time runs short. (Gestures at where Datadog/Mixpanel would sit in production.)
-8. **README** — write last, describing what actually shipped. Include a limitations section (web calls not PSTN, mocked leads).
+1. **Two-panel UI** — chat left, generated config right, so the reviewer watches natural language become a structured callable agent. This is the moment that sells the demo.
+2. **`/api/call`** plus the web-call trigger button, using `@vapi-ai/web`.
+3. ~~**Convert the booking tool from `apiRequest` to a custom tool**~~ — skipped for today's deadline; mentioned in the video, not built. Needs ngrok or a deploy, and the job post's "agent tools and functions in TypeScript" ask is already demonstrated by `lib/calTools.ts` defining and provisioning both tools in code.
+4. ~~**Call-log panel**~~ — skipped for today's deadline; mentioned in the video, not built.
+5. **README** — write last, describing what actually shipped. Include a limitations section (web calls not PSTN, mocked leads).
 
 ## Things deliberately out of scope
 
