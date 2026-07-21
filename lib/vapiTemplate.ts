@@ -12,6 +12,12 @@
 // following values: ..."), not from Vapi's own docs page — that page listed
 // different names entirely (e.g. "Clara New" instead of "Clara") and was
 // wrong. The API's own validation error is the source of truth here.
+//
+// "Spencer" was on that list but is excluded: a live assistant-creation
+// attempt with it rejected as "part of a legacy voice set that is being
+// phased out, and new assistants cannot be created with this voice." So the
+// enum-validation error and actual creation-time behavior disagree for this
+// one voice — passing the enum check doesn't guarantee Vapi will accept it.
 export const VOICE_IDS = [
   "Clara",
   "Godfrey",
@@ -33,7 +39,6 @@ export const VOICE_IDS = [
   "Cole",
   "Harry",
   "Paige",
-  "Spencer",
   "Naina",
   "Leah",
   "Tara",
