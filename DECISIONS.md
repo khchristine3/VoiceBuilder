@@ -4,7 +4,7 @@ A running record of every meaningful decision in this project: what we chose, wh
 
 **Project in one sentence:** a web app where you chat with a "builder" AI that generates and edits a voice AI assistant in plain English; the generated assistant can then call a lead, qualify them, and book a meeting.
 
-_Last updated: 21 Jul 2026_
+_Last updated: 22 Jul 2026_
 
 ## Status
 
@@ -14,7 +14,7 @@ _Last updated: 21 Jul 2026_
 
 **Resolved via pivot:** Anthropic API credit and a Twilio phone number were both blocked on ID verification; Alta's recruiter declined to provision either and asked for an alternative approach. Resolved by moving to Gemini (#26) and Vapi web calls (#27) rather than by Alta providing credentials. Separately, `gemini-3-flash-preview`'s free-tier quota ran out mid-build; swapped to `gemini-3.5-flash-lite` (#32).
 
-**Not yet built:** the README. Everything else on the must-have list for today is done; the custom-tool conversion and call-log panel are deliberately cut to video mentions (see CLAUDE.md).
+**Done:** every must-have on today's list, including the README. The custom-tool conversion and call-log panel are deliberately cut to video mentions (see CLAUDE.md) — nothing else is outstanding for the deadline.
 
 ---
 
