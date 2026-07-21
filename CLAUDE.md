@@ -97,14 +97,11 @@ Every external integration has been verified at least once:
 - `app/api/vapi-test/route.ts`, `app/api/vapi-assistant/route.ts`, `app/api/cal-test/route.ts`, `app/api/cal-book-test/route.ts` — **manual probe routes, not automated tests.** Each is a GET hit in the browser to verify one integration. Keep them; they document what was verified.
 - `reference/` — a Vapi assistant config and the bookMeeting tool config, both captured from the dashboard via the API (not hand-typed), used to derive the templates above. The tool capture had a live Cal.com key redacted before committing.
 - `DECISIONS.md` — full decision log with alternatives weighed and interview soundbites. **Keep this updated as new decisions are made** — it's used for the video narration and interview prep.
+- `README.md` — human-facing project doc: architecture diagrams, getting started, and the limitations section.
 
 ## What's left to build
 
-**Alta is due end of day today.** Only the README is left — everything else on the must-have list is done:
-
-**README** — write last, describing what actually shipped. Include a limitations section (web calls not PSTN, mocked leads).
-
-Deliberately skipped for today's deadline, become spoken-over sentences in the video, not built:
+**Nothing.** Every must-have on today's list shipped, including the README. What's left below is deliberately out of scope for the deadline — spoken-over sentences in the video, not built:
 - ~~**Convert the booking tool from `apiRequest` to a custom tool**~~ — needs ngrok or a deploy, and the job post's "agent tools and functions in TypeScript" ask is already demonstrated by `lib/calTools.ts` defining and provisioning both tools in code.
 - ~~**Call-log panel**~~.
 
