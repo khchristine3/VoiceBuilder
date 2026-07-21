@@ -4,17 +4,17 @@ A running record of every meaningful decision in this project: what we chose, wh
 
 **Project in one sentence:** a web app where you chat with a "builder" AI that generates and edits a voice AI assistant in plain English; the generated assistant can then call a lead, qualify them, and book a meeting.
 
-_Last updated: 20 Jul 2026_
+_Last updated: 21 Jul 2026_
 
 ## Status
 
-**Proven end to end:** describe an agent in plain English → builder generates a config via Gemini structured output → merged into the Vapi template → real assistant created via API. Separately proven: live conversation → tool call mid-call → real Cal.com booking → confirmation email. The two chains haven't been run back-to-back yet (the just-built assistant hasn't been test-called), but every link in both has been verified.
+**Proven end to end, full chain:** describe an agent in plain English → builder generates a config via Gemini structured output → merged into the Vapi template → real assistant created via API → called via Vapi's browser "Talk" button → tool call mid-call → real Cal.com booking → confirmation email. The generate-and-call chains have now been run back-to-back against a builder-generated assistant, not just the original hand-built one.
 
-**Working:** the builder endpoint (`/api/chat`) end to end, Vapi agent creation from code (201), the bookMeeting tool defined in code and provisioned idempotently, Cal.com booking from code (201), Vapi → Cal.com booking during a live browser call, ~$9.93 Vapi free credits.
+**Working:** the builder endpoint (`/api/chat`) end to end including edits (conversation history + PATCH against an existing assistant, same id preserved), Vapi agent creation from code (201), both the bookMeeting and getAvailableSlots tools defined in code and provisioned idempotently (`lib/calTools.ts`), Cal.com booking and real-slot lookup from code, Vapi → Cal.com booking during a live browser call, ~$9.93 Vapi free credits.
 
 **Resolved via pivot:** Anthropic API credit and a Twilio phone number were both blocked on ID verification; Alta's recruiter declined to provision either and asked for an alternative approach. Resolved by moving to Gemini (#26) and Vapi web calls (#27) rather than by Alta providing credentials.
 
-**Not yet built:** conversation history / editing an existing assistant, the two-panel UI, `/api/call`, the slots tool.
+**Not yet built:** the two-panel UI, `/api/call` plus the web-call trigger button.
 
 ---
 
@@ -398,14 +398,50 @@ This is the concrete version of the earlier hallucination argument: the defense 
 
 ---
 
+## 29. Conversation history + edit path → **thread assistantId, PATCH on edit**
+
+**Why:** The "edit" half of the brief ("make her more casual") only works if two things persist across turns: the conversation history (so Gemini knows what it already built) and the created assistant's id (so a follow-up updates the same assistant instead of creating a new one). Resending the message history alone doesn't tell the backend *whether* an assistant already exists — that has to be tracked as its own piece of state. Fixed by having the frontend hold both a Gemini-facing `history` array and `assistantId`, sent with every request; `/api/chat` PATCHes `https://api.vapi.ai/assistant/{id}` instead of POSTing when an id is present.
+
+**PATCH semantics confirmed empirically first, not assumed:** a partial PATCH to a throwaway test assistant left unset fields (`model`, `voice`) untouched, so sending the full freshly-generated payload as the PATCH body correctly overwrites exactly the four generated fields plus the fixed template, without needing to diff against the previous config.
+
+**Verified live end to end:** created an assistant, then sent a follow-up edit ("make her tone more casual and add a question about timeline") with the same id — Vapi returned 200, the assistant id was unchanged, and the fetched-back system prompt showed both the tone change and the new question, with the booking-mechanics footer (today's date, etc.) still intact. Test assistant deleted afterward.
+
+**What gets fed back to Gemini as history:** the exact JSON of the four generated fields (`name`, `firstMessage`, `systemPrompt`, `voiceId`) from the previous turn — not the friendly conversational `reply` — since that's the faithful record of what was actually built.
+
+**Alternatives weighed:**
+- **Only resend history, infer whether an assistant exists from it** — fragile; nothing in a resent message array says *if* an assistant already exists, only what to build. The id has to be tracked explicitly, not derived.
+- **Always POST, never PATCH** — simpler, but every edit orphans a new assistant in the Vapi dashboard and doesn't match "edit an existing agent" from the assignment brief.
+
+**Say it like this:** "Edits only work if you track two things across turns, not one — the conversation history so the model knows what it built, and the assistant id so the update lands on the same agent instead of spawning a new one. I verified Vapi's PATCH does a real partial merge before relying on it, rather than assuming."
+
+---
+
+## 30. getAvailableSlots → **static server-built URL, not an LLM-supplied query**
+
+**Why:** Cal.com's `/v2/slots` endpoint needs a query string (`eventTypeId`, `timeZone`, `start`, `end`), but Vapi's `apiRequest` tool turned out to have no query-parameter concept at all — only a request body, confirmed by inspecting the tool in the Vapi dashboard (a "Request Body" / "Static Body Fields" section, nothing else). GET requests conventionally carry no body, and Cal.com's API ignores one entirely. The first live call proved this concretely: the LLM's tool-call arguments were exactly right (`{"start": "...", "end": "..."}`), but Cal.com's response showed the identical "usernames property is wrong..." error produced by hitting the endpoint with zero query parameters at all — meaning nothing Vapi sent reached Cal.com's query string, neither the LLM-supplied `body` fields nor the fixed `parameters` (`eventTypeId`, `timeZone`).
+
+**Fix:** stop asking the model (or Vapi's tool-calling layer) to supply the query at all. The full query string — `eventTypeId`, `timeZone`, and a computed `start`/`end` window — is now built server-side in `getAvailableSlotsToolDefinition()` and baked directly into the tool's static `url`. The tool takes no arguments; same grounding principle as injecting "today is ..." into the system prompt, just applied to the search window too, and it sidesteps the GET-body problem entirely since there's nothing left to dynamically insert at call time.
+
+**Debugging method:** rather than keep guessing at Vapi's schema from docs that had already proven wrong twice (#25), pulled the actual call log for the failing live call via `GET /call/{id}` to see the LLM's exact tool-call arguments, and reproduced the exact Cal.com error independently by calling the endpoint with no query params — isolating the bug to Vapi's request construction, not the LLM's reasoning or Cal.com's API.
+
+**Tradeoff noted:** because `ensureTool()` reuses an existing tool by name rather than recreating it, the baked-in window is fixed at whichever moment the tool was first created, not recomputed on every generation. A 90-day window makes this a non-issue for a project due today, but it would need deleting-and-recreating (or the Custom Tool architecture in CLAUDE.md item 4) to stay accurate long-term.
+
+**Alternatives weighed:**
+- **Keep digging for a Vapi query-parameter mechanism** (URL templating, a `queryParameters` field, etc.) — the dashboard UI shows no such field exists, and the docs had already proven unreliable twice on smaller questions than this. Diminishing returns against a same-day deadline.
+- **LLM-supplied start/end via a working mechanism, if one existed** — would keep the window always current, but there's no evidence Vapi's apiRequest tool supports that for GET at all.
+
+**Follow-up UX fix:** the first successful call read out every slot in one breath (15+ times), which is unusable on a real phone call. Added instructions to the booking footer: ask the lead's preferred day/time-of-day first, then offer only 2-3 matching slots from the results, never the full list. This is prompt tuning, not a mechanism, so — unlike the query-string bug — it wasn't re-verified with another live call before considering it done; it's a judgment call to spot-check, not a pass/fail fact.
+
+**Say it like this:** "The tool-call arguments the model produced were exactly right — the bug was entirely in how Vapi built the outgoing request from them. I confirmed that by pulling the actual call log and reproducing the exact Cal.com error independently, rather than guessing again. The fix was to stop asking anyone to supply the query at call time and just compute it server-side, the same grounding principle already used for the current date."
+
+---
+
 ## Open / to revisit
 - **Resolved via pivot, not by Alta providing credentials:** Anthropic API credit and a Twilio number were both blocked on ID verification; the recruiter declined to provision either. Resolved by moving to Gemini (#26) and Vapi web calls (#27), not by the original ask.
-- **Untested:** call a builder-generated assistant end to end via Vapi's browser "Talk" button. The earlier successful call → tool call → Cal.com booking used the hand-built assistant and the dashboard-created tool, before either was replaced by the generated/code-provisioned versions — that chain hasn't been re-proven against the new pipeline yet.
-- Add conversation history so the "edit" flow works ("make her more casual"), plus a PATCH path in `/api/chat` for updating an existing assistant instead of always creating a new one.
+- **Confirmed:** a builder-generated assistant was tested end to end via Vapi's browser "Talk" button and booked a real meeting — the full chain (generate → call → qualify → book) is now proven against the code-generated/provisioned pipeline, not just the original hand-built one.
 - Build the two-panel UI: chat left, generated config right — `/api/chat` already returns `{ reply, assistant, config }` to support it.
 - `/api/call` endpoint plus the demo trigger button.
-- Add `getAvailableSlots` as a second tool.
-- Convert the booking tool from API Request to a Custom Tool pointing at my own endpoint (`lib/bookingTool.ts` is API-Request-shaped today).
+- Convert the booking tool from API Request to a Custom Tool pointing at my own endpoint (`lib/calTools.ts` is API-Request-shaped today).
 - Decide the exact qualifying questions (budget, decision-maker, timeline, team size) — currently left to the model per description.
 - Whether to seed 2–3 mock leads vs a single "call my own number" demo for the video.
 - Retest latency on a real phone call; tune `waitSeconds` only if it's still slow there.
