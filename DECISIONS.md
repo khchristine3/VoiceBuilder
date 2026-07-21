@@ -10,11 +10,11 @@ _Last updated: 21 Jul 2026_
 
 **Proven end to end, full chain:** describe an agent in plain English → builder generates a config via Gemini structured output → merged into the Vapi template → real assistant created via API → called via Vapi's browser "Talk" button → tool call mid-call → real Cal.com booking → confirmation email. The generate-and-call chains have now been run back-to-back against a builder-generated assistant, not just the original hand-built one.
 
-**Working:** the builder endpoint (`/api/chat`) end to end including edits (conversation history + PATCH against an existing assistant, same id preserved), Vapi agent creation from code (201), both the bookMeeting and getAvailableSlots tools defined in code and provisioned idempotently (`lib/calTools.ts`), Cal.com booking and real-slot lookup from code, Vapi → Cal.com booking during a live browser call, ~$9.93 Vapi free credits.
+**Working:** the builder endpoint (`/api/chat`) end to end including edits (conversation history + PATCH against an existing assistant, same id preserved), the two-panel UI, Vapi agent creation from code (201), both the bookMeeting and getAvailableSlots tools defined in code and provisioned idempotently (`lib/calTools.ts`), Cal.com booking and real-slot lookup from code, Vapi → Cal.com booking during a live browser call, the client-side web-call trigger (`@vapi-ai/web`), `/api/call` written for real PSTN (unexecuted), ~$9.93 Vapi free credits.
 
 **Resolved via pivot:** Anthropic API credit and a Twilio phone number were both blocked on ID verification; Alta's recruiter declined to provision either and asked for an alternative approach. Resolved by moving to Gemini (#26) and Vapi web calls (#27) rather than by Alta providing credentials.
 
-**Not yet built:** `/api/call` plus the web-call trigger button.
+**Not yet built:** the README. Everything else on the must-have list for today is done; the custom-tool conversion and call-log panel are deliberately cut to video mentions (see CLAUDE.md).
 
 ---
 
@@ -348,7 +348,9 @@ This is the concrete version of the earlier hallucination argument: the defense 
 **Alternatives weighed:**
 - **Trust the docs page** — this is what happened first, and it broke the very first live test of the new endpoint.
 
-**Say it like this:** "The docs and the live API disagreed, so I trusted the API — same grounding principle as the agent's own system prompt, applied to how I built it. Now it's a standing rule in CLAUDE.md: confirm real API responses by calling them, don't rely on docs or memory."
+**Follow-up:** even the API's own enum has an edge case. A later real assistant-creation attempt with `voiceId: "Spencer"` — a name that passes the enum check above — was rejected: "part of a legacy voice set that is being phased out, and new assistants cannot be created with this voice." So passing schema validation doesn't guarantee Vapi will actually accept a voice at creation time; the two checks live at different layers and can disagree. Removed from `VOICE_IDS`.
+
+**Say it like this:** "The docs and the live API disagreed, so I trusted the API — same grounding principle as the agent's own system prompt, applied to how I built it. Now it's a standing rule in CLAUDE.md: confirm real API responses by calling them, don't rely on docs or memory. Even then, one voice that passed the enum check still got rejected at creation time for being deprecated — schema-valid isn't the same as accepted."
 
 ---
 
@@ -370,7 +372,9 @@ This is the concrete version of the earlier hallucination argument: the defense 
 
 **Why:** Every telephony carrier requires government photo ID to provision a number (see #17, superseded). Vapi's free numbers are US-national-use only, and the test phone is Israeli — neither path works without submitting identity documents. The demo instead uses Vapi web calls (the `@vapi-ai/web` SDK) embedded directly in the app.
 
-**`/api/call`** — the endpoint for a real PSTN call — is still written and shown on camera, just not executed live.
+**`/api/call`** — the endpoint for a real PSTN call — is still written and shown on camera, just not executed live. Its request shape (`assistantId`, `phoneNumberId`, `customer.number`) was confirmed against `@vapi-ai/web`'s bundled `CreateCallDTO`/`CreateCustomerDTO` types rather than docs, since this endpoint can't be live-tested without a real number.
+
+**Built and confirmed working:** the client-side web-call trigger in `app/page.tsx`, using a separate `NEXT_PUBLIC_VAPI_API_KEY` (Vapi's public key, safe for the browser bundle — never the private `VAPI_API_KEY` used server-side). Clicking "Call this agent" starts a real WebRTC call via `@vapi-ai/web`'s `vapi.start(assistantId)`, live-tested end to end.
 
 **Why this still satisfies the brief:** describe → generate → call → qualify → book all still happen end to end; only the transport layer differs (WebRTC in-browser instead of the phone network). None of the five assignment beats are skipped.
 
