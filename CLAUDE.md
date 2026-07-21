@@ -33,6 +33,7 @@ Every external integration has been verified at least once:
 - **Cal.com booking and real-slot lookup from code** — both `bookMeeting` and `getAvailableSlots` verified working via a live call (DECISIONS.md #30 for the getAvailableSlots debugging story — Vapi's `apiRequest` tool has no GET query-parameter mechanism, only a body, which Cal.com ignores on GET; fixed by baking a server-computed query string into a static URL instead).
 - **Full chain, against a builder-generated assistant: describe → generate → call → qualify → book.** Called via Vapi's browser "Talk" button, tool call mid-conversation, real Cal.com booking confirmed.
 - **The client-side web-call trigger** — `app/page.tsx`, using `@vapi-ai/web` and a separate public key (`NEXT_PUBLIC_VAPI_API_KEY`, never the private server-side key). Clicking "Call this agent" starts a real WebRTC call in the browser, live-verified.
+- **Per-lead calls with voice personalization** — `lib/leads.ts` holds 3 mock leads; each has its own Call button that passes the lead's name/company/role via `assistantOverrides.variableValues`. The builder is instructed to include a bare `{{name}}` placeholder in `firstMessage`; Vapi's LiquidJS engine resolves it at call time. Live-verified: a lead call correctly greeted "Dana Cohen" by voice.
 
 ## Working rules
 
@@ -88,7 +89,8 @@ Every external integration has been verified at least once:
 - `app/api/chat/route.ts` — the builder endpoint: Gemini structured output → `lib/vapiTemplate.ts` merge → `lib/calTools.ts` for the tool ids → `POST` (create) or `PATCH` (edit) `/assistant`, chosen by whether the request carries an `assistantId` (see DECISIONS.md #29).
 - `lib/vapiTemplate.ts` — the hardcoded assistant template and `buildAssistantPayload()` merge function; also owns `VOICE_IDS`.
 - `lib/calTools.ts` — defines the bookMeeting and getAvailableSlots tools and `ensureBookingTool()`/`ensureSlotsTool()`, which reuse an existing tool by name instead of creating duplicates (renamed from `bookingTool.ts` once it grew a second tool).
-- `app/page.tsx` — two-panel UI: chat left, generated config (name/voice/firstMessage/systemPrompt) right, sourced from `/api/chat`'s `{ reply, assistant, config }` response. Also has the client-side web-call trigger (`@vapi-ai/web`, `NEXT_PUBLIC_VAPI_API_KEY`).
+- `app/page.tsx` — two-panel UI: chat left, generated config (name/voice/firstMessage/systemPrompt) right, sourced from `/api/chat`'s `{ reply, assistant, config }` response. Also has the client-side web-call trigger (`@vapi-ai/web`, `NEXT_PUBLIC_VAPI_API_KEY`) and per-lead Call buttons from `lib/leads.ts`.
+- `lib/leads.ts` — 3 mock leads (name, company, role, phone) standing in for a CRM; field names map onto common CRM contact properties.
 - `app/api/call/route.ts` — the real PSTN call endpoint (`POST /call` with `assistantId`/`phoneNumberId`/`customer.number`). Written and shown per the brief, never executed — no phone number exists (see DECISIONS.md #17, #18, #27).
 - `app/api/vapi-test/route.ts`, `app/api/vapi-assistant/route.ts`, `app/api/cal-test/route.ts`, `app/api/cal-book-test/route.ts` — **manual probe routes, not automated tests.** Each is a GET hit in the browser to verify one integration. Keep them; they document what was verified.
 - `reference/` — a Vapi assistant config and the bookMeeting tool config, both captured from the dashboard via the API (not hand-typed), used to derive the templates above. The tool capture had a live Cal.com key redacted before committing.
@@ -96,12 +98,14 @@ Every external integration has been verified at least once:
 
 ## What's left to build
 
-**Alta is due end of day today.** Only the README is left — everything else on the must-have list is done. Items below are deliberately skipped for today's deadline and become spoken-over sentences in the video, not built:
+**Alta is due end of day today.** In order:
 
+1. **Auto-trigger webhook.** `/api/webhooks/lead-created` accepting a CRM-shaped payload, adding the lead to an in-memory list; the UI polls and auto-starts the call when one arrives, no button press needed. Fired with curl on camera to simulate a CRM. **Drop this if it runs long** — a working demo beats an ambitious broken one; the button-triggered lead calls already satisfy the brief on their own.
+2. **README** — write last, describing what actually shipped. Include a limitations section (web calls not PSTN, mocked leads).
+
+Deliberately skipped for today's deadline, become spoken-over sentences in the video, not built:
 - ~~**Convert the booking tool from `apiRequest` to a custom tool**~~ — needs ngrok or a deploy, and the job post's "agent tools and functions in TypeScript" ask is already demonstrated by `lib/calTools.ts` defining and provisioning both tools in code.
 - ~~**Call-log panel**~~.
-
-**README** — write last, describing what actually shipped. Include a limitations section (web calls not PSTN, mocked leads).
 
 ## Things deliberately out of scope
 
