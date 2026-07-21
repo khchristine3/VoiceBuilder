@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import Vapi from "@vapi-ai/web";
 import type { GeneratedFields } from "@/lib/vapiTemplate";
 
 type HistoryTurn = { role: "user" | "model"; text: string };
@@ -14,6 +15,29 @@ export default function Home() {
   const [assistantName, setAssistantName] = useState<string | null>(null);
   const [config, setConfig] = useState<GeneratedFields | null>(null);
   const [loading, setLoading] = useState(false);
+  const [callActive, setCallActive] = useState(false);
+  const vapiRef = useRef<Vapi | null>(null);
+
+  // Vapi's web SDK talks WebRTC (via Daily) directly from the browser, so
+  // it can only be created client-side, after mount -- useEffect never runs
+  // during Next.js's server-side render pass, unlike the component body.
+  useEffect(() => {
+    const vapi = new Vapi(process.env.NEXT_PUBLIC_VAPI_API_KEY!);
+    vapi.on("call-start", () => setCallActive(true));
+    vapi.on("call-end", () => setCallActive(false));
+    vapiRef.current = vapi;
+    return () => {
+      vapi.stop();
+    };
+  }, []);
+
+  function startCall() {
+    if (assistantId) vapiRef.current?.start(assistantId);
+  }
+
+  function endCall() {
+    vapiRef.current?.stop();
+  }
 
   async function send() {
     const userMessage = input;
@@ -109,8 +133,16 @@ export default function Home() {
                 </pre>
               </div>
               {assistantId && (
-                <div className="text-xs text-zinc-400 pt-2 border-t">
-                  Vapi assistant id: {assistantId}
+                <div className="pt-2 border-t space-y-2">
+                  <div className="text-xs text-zinc-400">Vapi assistant id: {assistantId}</div>
+                  <button
+                    onClick={callActive ? endCall : startCall}
+                    className={`px-4 py-2 rounded text-white ${
+                      callActive ? "bg-red-600" : "bg-green-600"
+                    }`}
+                  >
+                    {callActive ? "End call" : "Call this agent (browser mic)"}
+                  </button>
                 </div>
               )}
             </>
