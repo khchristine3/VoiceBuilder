@@ -10,11 +10,11 @@ _Last updated: 21 Jul 2026_
 
 **Proven end to end, full chain:** describe an agent in plain English → builder generates a config via Gemini structured output → merged into the Vapi template → real assistant created via API → called via Vapi's browser "Talk" button → tool call mid-call → real Cal.com booking → confirmation email. The generate-and-call chains have now been run back-to-back against a builder-generated assistant, not just the original hand-built one.
 
-**Working:** the builder endpoint (`/api/chat`) end to end including edits (conversation history + PATCH against an existing assistant, same id preserved), the two-panel UI, Vapi agent creation from code (201), both the bookMeeting and getAvailableSlots tools defined in code and provisioned idempotently (`lib/calTools.ts`), Cal.com booking and real-slot lookup from code, Vapi → Cal.com booking during a live browser call, the client-side web-call trigger (`@vapi-ai/web`), per-lead personalized calls (`lib/leads.ts`, live-verified greeting a lead by name), `/api/call` written for real PSTN (unexecuted), ~$9.93 Vapi free credits.
+**Working:** the builder endpoint (`/api/chat`) end to end including edits (conversation history + PATCH against an existing assistant, same id preserved), the two-panel UI, Vapi agent creation from code (201), both the bookMeeting and getAvailableSlots tools defined in code and provisioned idempotently (`lib/calTools.ts`), Cal.com booking and real-slot lookup from code, Vapi → Cal.com booking during a live browser call, the client-side web-call trigger (`@vapi-ai/web`), per-lead personalized calls (`lib/leads.ts`, live-verified greeting a lead by name), the auto-trigger webhook (`/api/webhooks/lead-created`, live-verified a curl POST auto-starting a personalized call), `/api/call` written for real PSTN (unexecuted), ~$9.93 Vapi free credits.
 
-**Resolved via pivot:** Anthropic API credit and a Twilio phone number were both blocked on ID verification; Alta's recruiter declined to provision either and asked for an alternative approach. Resolved by moving to Gemini (#26) and Vapi web calls (#27) rather than by Alta providing credentials.
+**Resolved via pivot:** Anthropic API credit and a Twilio phone number were both blocked on ID verification; Alta's recruiter declined to provision either and asked for an alternative approach. Resolved by moving to Gemini (#26) and Vapi web calls (#27) rather than by Alta providing credentials. Separately, `gemini-3-flash-preview`'s free-tier quota ran out mid-build; swapped to `gemini-3.5-flash-lite` (#32).
 
-**Not yet built:** the auto-trigger webhook (drop if it runs long) and the README. Everything else on the must-have list for today is done; the custom-tool conversion and call-log panel are deliberately cut to video mentions (see CLAUDE.md).
+**Not yet built:** the README. Everything else on the must-have list for today is done; the custom-tool conversion and call-log panel are deliberately cut to video mentions (see CLAUDE.md).
 
 ---
 
@@ -455,13 +455,19 @@ This is the concrete version of the earlier hallucination argument: the defense 
 
 ---
 
+## 32. Builder model → **Gemini 3.5 Flash Lite** (quota-forced swap)
+
+**Why:** `gemini-3-flash-preview`'s free-tier quota was exhausted mid-build. Swapped to `gemini-3.5-flash-lite` to keep working — same reasoning as #26 (structured extraction from one sentence doesn't need a frontier model), now forced by a hard usage limit rather than a budget choice.
+
+**Say it like this:** "Hit the free-tier quota on the preview model mid-build and swapped to Flash Lite — the builder is still structured extraction, not hard reasoning, so a lighter model costs nothing here."
+
+---
+
 ## Open / to revisit
 - **Resolved via pivot, not by Alta providing credentials:** Anthropic API credit and a Twilio number were both blocked on ID verification; the recruiter declined to provision either. Resolved by moving to Gemini (#26) and Vapi web calls (#27), not by the original ask.
 - **Confirmed:** a builder-generated assistant was tested end to end via Vapi's browser "Talk" button and booked a real meeting — the full chain (generate → call → qualify → book) is now proven against the code-generated/provisioned pipeline, not just the original hand-built one.
-- `/api/call` endpoint plus the demo trigger button.
 - Convert the booking tool from API Request to a Custom Tool pointing at my own endpoint (`lib/calTools.ts` is API-Request-shaped today).
 - Decide the exact qualifying questions (budget, decision-maker, timeline, team size) — currently left to the model per description.
-- Whether to seed 2–3 mock leads vs a single "call my own number" demo for the video.
 - Retest latency on a real phone call; tune `waitSeconds` only if it's still slow there.
-- Call-log panel (needs ngrok + webhook handling) — first thing to cut if time runs short.
+- Call-log panel — first thing to cut if time runs short.
 - Rotate the Cal.com API key since it was briefly captured in plaintext in a reference file (never committed, but worth doing on general principle).
