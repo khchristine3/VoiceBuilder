@@ -10,11 +10,11 @@ _Last updated: 21 Jul 2026_
 
 **Proven end to end, full chain:** describe an agent in plain English → builder generates a config via Gemini structured output → merged into the Vapi template → real assistant created via API → called via Vapi's browser "Talk" button → tool call mid-call → real Cal.com booking → confirmation email. The generate-and-call chains have now been run back-to-back against a builder-generated assistant, not just the original hand-built one.
 
-**Working:** the builder endpoint (`/api/chat`) end to end including edits (conversation history + PATCH against an existing assistant, same id preserved), the two-panel UI, Vapi agent creation from code (201), both the bookMeeting and getAvailableSlots tools defined in code and provisioned idempotently (`lib/calTools.ts`), Cal.com booking and real-slot lookup from code, Vapi → Cal.com booking during a live browser call, the client-side web-call trigger (`@vapi-ai/web`), `/api/call` written for real PSTN (unexecuted), ~$9.93 Vapi free credits.
+**Working:** the builder endpoint (`/api/chat`) end to end including edits (conversation history + PATCH against an existing assistant, same id preserved), the two-panel UI, Vapi agent creation from code (201), both the bookMeeting and getAvailableSlots tools defined in code and provisioned idempotently (`lib/calTools.ts`), Cal.com booking and real-slot lookup from code, Vapi → Cal.com booking during a live browser call, the client-side web-call trigger (`@vapi-ai/web`), per-lead personalized calls (`lib/leads.ts`, live-verified greeting a lead by name), `/api/call` written for real PSTN (unexecuted), ~$9.93 Vapi free credits.
 
 **Resolved via pivot:** Anthropic API credit and a Twilio phone number were both blocked on ID verification; Alta's recruiter declined to provision either and asked for an alternative approach. Resolved by moving to Gemini (#26) and Vapi web calls (#27) rather than by Alta providing credentials.
 
-**Not yet built:** the README. Everything else on the must-have list for today is done; the custom-tool conversion and call-log panel are deliberately cut to video mentions (see CLAUDE.md).
+**Not yet built:** the auto-trigger webhook (drop if it runs long) and the README. Everything else on the must-have list for today is done; the custom-tool conversion and call-log panel are deliberately cut to video mentions (see CLAUDE.md).
 
 ---
 
@@ -437,6 +437,21 @@ This is the concrete version of the earlier hallucination argument: the defense 
 **Follow-up UX fix:** the first successful call read out every slot in one breath (15+ times), which is unusable on a real phone call. Added instructions to the booking footer: ask the lead's preferred day/time-of-day first, then offer only 2-3 matching slots from the results, never the full list. This is prompt tuning, not a mechanism, so — unlike the query-string bug — it wasn't re-verified with another live call before considering it done; it's a judgment call to spot-check, not a pass/fail fact.
 
 **Say it like this:** "The tool-call arguments the model produced were exactly right — the bug was entirely in how Vapi built the outgoing request from them. I confirmed that by pulling the actual call log and reproducing the exact Cal.com error independently, rather than guessing again. The fix was to stop asking anyone to supply the query at call time and just compute it server-side, the same grounding principle already used for the current date."
+
+---
+
+## 31. Per-lead calls → **code supplies the fallback, not the LLM**
+
+**Why:** The demo needed the agent to greet a specific lead by name, using Vapi's `assistantOverrides.variableValues` (LiquidJS templating — `{{ name }}` resolves to `variableValues.name`). The risky part: what happens on the *preview* call, which has no lead and passes no `variableValues`? If the generated `firstMessage` used a bare `{{name}}` with nothing supplied, the agent could plausibly speak the literal token out loud.
+
+**Fix:** instructed the builder (`BUILDER_INSTRUCTIONS`) to write only a bare `{{name}}` — no Liquid filters, no `default:` syntax — and made the *calling code* always supply a value, including for the preview call (`lead?.name ?? "there"`). The fallback lives in TypeScript, not in what the LLM has to get syntactically right.
+
+**Alternatives weighed:**
+- **Have the LLM write `{{ name | default: "there" }}`** — keeps the fallback in the template itself, but asks Gemini to reliably produce correct LiquidJS filter syntax (quoting, spacing, the `|` pipe) inside a natural-language field. One malformed instance breaks the whole `firstMessage`. Same reasoning as #15/#21: don't make the model responsible for a mechanical detail code can guarantee instead.
+
+**Live-verified:** a lead call correctly greeted "Dana Cohen" by voice; the per-row button state (which lead is active, others disabled) updated correctly. One real bug caught only by clicking through the UI, not by reading the code: the preview button had no `disabled` guard, so clicking it mid-lead-call would have tried to start a second overlapping call. Fixed in the same pass.
+
+**Say it like this:** "The risk was the preview call saying a literal `{{name}}` out loud if nothing was supplied. Rather than trust the model to write correct template-filter syntax for a fallback, I kept the fallback in code and always supply a value, lead or not."
 
 ---
 
