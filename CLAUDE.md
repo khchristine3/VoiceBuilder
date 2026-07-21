@@ -87,20 +87,19 @@ Every external integration has been verified at least once:
 - `app/api/chat/route.ts` — the builder endpoint: Gemini structured output → `lib/vapiTemplate.ts` merge → `lib/calTools.ts` for the tool ids → `POST` (create) or `PATCH` (edit) `/assistant`, chosen by whether the request carries an `assistantId` (see DECISIONS.md #29).
 - `lib/vapiTemplate.ts` — the hardcoded assistant template and `buildAssistantPayload()` merge function; also owns `VOICE_IDS`.
 - `lib/calTools.ts` — defines the bookMeeting and getAvailableSlots tools and `ensureBookingTool()`/`ensureSlotsTool()`, which reuse an existing tool by name instead of creating duplicates (renamed from `bookingTool.ts` once it grew a second tool).
-- `app/page.tsx` — minimal chat UI (not yet the two-panel layout; the API already returns `{ reply, assistant, config }` to support it)
+- `app/page.tsx` — two-panel UI: chat left, generated config (name/voice/firstMessage/systemPrompt) right, sourced from `/api/chat`'s `{ reply, assistant, config }` response.
 - `app/api/vapi-test/route.ts`, `app/api/vapi-assistant/route.ts`, `app/api/cal-test/route.ts`, `app/api/cal-book-test/route.ts` — **manual probe routes, not automated tests.** Each is a GET hit in the browser to verify one integration. Keep them; they document what was verified.
 - `reference/` — a Vapi assistant config and the bookMeeting tool config, both captured from the dashboard via the API (not hand-typed), used to derive the templates above. The tool capture had a live Cal.com key redacted before committing.
 - `DECISIONS.md` — full decision log with alternatives weighed and interview soundbites. **Keep this updated as new decisions are made** — it's used for the video narration and interview prep.
 
 ## What's left to build
 
-**Alta is due end of day today.** Building the remaining must-haves in this order, cutting the rest — items 3 and 4 below become spoken-over sentences in the video, not built:
+**Alta is due end of day today.** Building the remaining must-haves in this order, cutting the rest — items 2 and 3 below become spoken-over sentences in the video, not built:
 
-1. **Two-panel UI** — chat left, generated config right, so the reviewer watches natural language become a structured callable agent. This is the moment that sells the demo.
-2. **`/api/call`** plus the web-call trigger button, using `@vapi-ai/web`.
-3. ~~**Convert the booking tool from `apiRequest` to a custom tool**~~ — skipped for today's deadline; mentioned in the video, not built. Needs ngrok or a deploy, and the job post's "agent tools and functions in TypeScript" ask is already demonstrated by `lib/calTools.ts` defining and provisioning both tools in code.
-4. ~~**Call-log panel**~~ — skipped for today's deadline; mentioned in the video, not built.
-5. **README** — write last, describing what actually shipped. Include a limitations section (web calls not PSTN, mocked leads).
+1. **`/api/call`** plus the web-call trigger button, using `@vapi-ai/web`.
+2. ~~**Convert the booking tool from `apiRequest` to a custom tool**~~ — skipped for today's deadline; mentioned in the video, not built. Needs ngrok or a deploy, and the job post's "agent tools and functions in TypeScript" ask is already demonstrated by `lib/calTools.ts` defining and provisioning both tools in code.
+3. ~~**Call-log panel**~~ — skipped for today's deadline; mentioned in the video, not built.
+4. **README** — write last, describing what actually shipped. Include a limitations section (web calls not PSTN, mocked leads).
 
 ## Things deliberately out of scope
 
