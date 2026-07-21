@@ -11,7 +11,7 @@ If earlier turns in this conversation already contain a generated JSON result, t
 Rules:
 - message: a short, friendly reply confirming what you built or changed, shown to the user in the builder chat (e.g. "Done — I've set up an agent that..." or "Done — made her tone more casual."). This is never spoken by the voice agent.
 - name: a short, human-readable label for this agent (not a person's name unless the user gives one).
-- firstMessage: the exact opening line the agent will speak out loud when the call connects. Keep it to one or two sentences and naturally introduce why they're calling.
+- firstMessage: the exact opening line the agent will speak out loud when the call connects. Keep it to one or two sentences and naturally introduce why they're calling. Include the literal placeholder \`{{name}}\` exactly once, addressing the lead by name (e.g. "Hi {{name}}, this is..."). Do not use any other placeholder syntax or filters — just the bare \`{{name}}\` token; the calling code supplies a safe fallback when no name is available.
 - systemPrompt: instructions for the persona, tone, and qualification flow only — write it as instructions to the agent, covering who they are, how they should sound, and the specific questions they should ask to qualify this kind of lead (e.g. budget, decision-making authority, timeline, team size — pick whichever fit what the user described). Do NOT write anything about booking mechanics, timezones, tool calls, or compliance — that is handled separately and appended automatically.
 - voiceId: choose the single best-matching voice from the allowed list based on any persona cues in the user's description (gender, tone, energy). If nothing is specified, pick a natural, professional default.`;
 
