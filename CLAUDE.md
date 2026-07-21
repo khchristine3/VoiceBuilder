@@ -18,7 +18,7 @@ Deliverable is a video demo hitting five beats in order: describe → generate �
 ## Stack
 
 - **Next.js (App Router) + TypeScript + Tailwind** — one project holds UI and backend via API routes
-- **Gemini 3 Flash** (`gemini-3-flash-preview`) — the builder brain, via `@google/genai`
+- **Gemini 3.5 Flash Lite** (`gemini-3.5-flash-lite`) — the builder brain, via `@google/genai`. Swapped from `gemini-3-flash-preview` after that model's free-tier quota was exhausted mid-build (see DECISIONS.md #32).
 - **Vapi** — voice platform. Assistants are created by POSTing JSON to `https://api.vapi.ai/assistant`
 - **Cal.com** — real meeting booking via its v2 API
 - **In-call model is `gpt-4o-mini`**, running inside Vapi (not in this codebase)
@@ -34,6 +34,7 @@ Every external integration has been verified at least once:
 - **Full chain, against a builder-generated assistant: describe → generate → call → qualify → book.** Called via Vapi's browser "Talk" button, tool call mid-conversation, real Cal.com booking confirmed.
 - **The client-side web-call trigger** — `app/page.tsx`, using `@vapi-ai/web` and a separate public key (`NEXT_PUBLIC_VAPI_API_KEY`, never the private server-side key). Clicking "Call this agent" starts a real WebRTC call in the browser, live-verified.
 - **Per-lead calls with voice personalization** — `lib/leads.ts` holds 3 mock leads; each has its own Call button that passes the lead's name/company/role via `assistantOverrides.variableValues`. The builder is instructed to include a bare `{{name}}` placeholder in `firstMessage`; Vapi's LiquidJS engine resolves it at call time. Live-verified: a lead call correctly greeted "Dana Cohen" by voice.
+- **Auto-trigger via webhook** — `app/api/webhooks/lead-created/route.ts` (POST adds a lead, GET lists them) plus polling in `app/page.tsx` that auto-starts a call for a newly-arrived lead with no button press. Live-verified: firing the webhook via curl auto-started a call that greeted the lead by name.
 
 ## Working rules
 
@@ -91,6 +92,7 @@ Every external integration has been verified at least once:
 - `lib/calTools.ts` — defines the bookMeeting and getAvailableSlots tools and `ensureBookingTool()`/`ensureSlotsTool()`, which reuse an existing tool by name instead of creating duplicates (renamed from `bookingTool.ts` once it grew a second tool).
 - `app/page.tsx` — two-panel UI: chat left, generated config (name/voice/firstMessage/systemPrompt) right, sourced from `/api/chat`'s `{ reply, assistant, config }` response. Also has the client-side web-call trigger (`@vapi-ai/web`, `NEXT_PUBLIC_VAPI_API_KEY`) and per-lead Call buttons from `lib/leads.ts`.
 - `lib/leads.ts` — 3 mock leads (name, company, role, phone) standing in for a CRM; field names map onto common CRM contact properties.
+- `app/api/webhooks/lead-created/route.ts` — simulates a CRM webhook; POST adds a lead to an in-memory list (resets on server restart), GET lets the UI poll for arrivals.
 - `app/api/call/route.ts` — the real PSTN call endpoint (`POST /call` with `assistantId`/`phoneNumberId`/`customer.number`). Written and shown per the brief, never executed — no phone number exists (see DECISIONS.md #17, #18, #27).
 - `app/api/vapi-test/route.ts`, `app/api/vapi-assistant/route.ts`, `app/api/cal-test/route.ts`, `app/api/cal-book-test/route.ts` — **manual probe routes, not automated tests.** Each is a GET hit in the browser to verify one integration. Keep them; they document what was verified.
 - `reference/` — a Vapi assistant config and the bookMeeting tool config, both captured from the dashboard via the API (not hand-typed), used to derive the templates above. The tool capture had a live Cal.com key redacted before committing.
@@ -98,10 +100,9 @@ Every external integration has been verified at least once:
 
 ## What's left to build
 
-**Alta is due end of day today.** In order:
+**Alta is due end of day today.** Only the README is left — everything else on the must-have list is done:
 
-1. **Auto-trigger webhook.** `/api/webhooks/lead-created` accepting a CRM-shaped payload, adding the lead to an in-memory list; the UI polls and auto-starts the call when one arrives, no button press needed. Fired with curl on camera to simulate a CRM. **Drop this if it runs long** — a working demo beats an ambitious broken one; the button-triggered lead calls already satisfy the brief on their own.
-2. **README** — write last, describing what actually shipped. Include a limitations section (web calls not PSTN, mocked leads).
+**README** — write last, describing what actually shipped. Include a limitations section (web calls not PSTN, mocked leads).
 
 Deliberately skipped for today's deadline, become spoken-over sentences in the video, not built:
 - ~~**Convert the booking tool from `apiRequest` to a custom tool**~~ — needs ngrok or a deploy, and the job post's "agent tools and functions in TypeScript" ask is already demonstrated by `lib/calTools.ts` defining and provisioning both tools in code.
